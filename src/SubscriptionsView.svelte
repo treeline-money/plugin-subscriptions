@@ -256,16 +256,21 @@
       sortDesc = true;
     }
   }
+
+  function getSortIndicator(column: typeof sortBy): string {
+    if (sortBy !== column) return "";
+    return sortDesc ? " \u2193" : " \u2191";
+  }
 </script>
 
-<div class="container">
-  <header>
+<div class="view">
+  <header class="header">
     <div class="header-left">
-      <h1>Subscriptions</h1>
+      <h1 class="title">Subscriptions</h1>
       <p class="subtitle">Automatically detected recurring charges</p>
     </div>
     <div class="header-right">
-      <label class="toggle">
+      <label class="checkbox">
         <input type="checkbox" bind:checked={showHidden} />
         <span>Show hidden ({hiddenMerchants.size})</span>
       </label>
@@ -276,132 +281,186 @@
   </header>
 
   {#if isLoading}
-    <div class="loading">Analyzing transactions...</div>
+    <div class="loading">
+      <div class="spinner"></div>
+      <span>Analyzing transactions...</span>
+    </div>
   {:else if subscriptions.length === 0}
     <div class="empty">
-      <p>No recurring subscriptions detected.</p>
-      <p class="hint">Subscriptions are detected from transactions with regular intervals (weekly, monthly, etc.)</p>
+      <div class="empty-icon">$</div>
+      <p class="empty-title">No subscriptions detected</p>
+      <p class="empty-message">Subscriptions are detected from transactions with regular intervals (weekly, monthly, etc.)</p>
     </div>
   {:else}
-    <div class="summary-cards">
-      <div class="summary-card">
-        <span class="label">Monthly Cost</span>
-        <span class="value">{formatCurrency(totalMonthlyCost)}</span>
+    <div class="content">
+      <div class="cards">
+        <div class="card">
+          <span class="card-label">Monthly Cost</span>
+          <span class="card-value">{formatCurrency(totalMonthlyCost)}</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Annual Cost</span>
+          <span class="card-value">{formatCurrency(totalAnnualCost)}</span>
+        </div>
+        <div class="card">
+          <span class="card-label">Active Subscriptions</span>
+          <span class="card-value">{visibleSubscriptions.filter(s => !hiddenMerchants.has(s.merchant)).length}</span>
+        </div>
       </div>
-      <div class="summary-card">
-        <span class="label">Annual Cost</span>
-        <span class="value">{formatCurrency(totalAnnualCost)}</span>
-      </div>
-      <div class="summary-card">
-        <span class="label">Active Subscriptions</span>
-        <span class="value">{visibleSubscriptions.filter(s => !hiddenMerchants.has(s.merchant)).length}</span>
+
+      <div class="table-container">
+        <table class="table">
+          <thead>
+            <tr>
+              <th class="sortable" onclick={() => toggleSort("merchant")}>
+                Merchant{getSortIndicator("merchant")}
+              </th>
+              <th>Amount</th>
+              <th>Frequency</th>
+              <th class="sortable" onclick={() => toggleSort("annual_cost")}>
+                Annual Cost{getSortIndicator("annual_cost")}
+              </th>
+              <th class="sortable" onclick={() => toggleSort("last_charge")}>
+                Last Charge{getSortIndicator("last_charge")}
+              </th>
+              <th class="actions-header">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each sortedSubscriptions as sub}
+              <tr class:muted={hiddenMerchants.has(sub.merchant)}>
+                <td class="merchant">{sub.merchant}</td>
+                <td class="mono">{formatCurrency(sub.amount)}</td>
+                <td>
+                  <span class="badge">{sub.frequency}</span>
+                </td>
+                <td class="mono cost">{formatCurrency(sub.annual_cost)}</td>
+                <td class="date">{formatDate(sub.last_charge)}</td>
+                <td class="actions">
+                  <button class="btn-icon" title="View transactions" onclick={() => viewTransactions(sub.merchant)}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <circle cx="11" cy="11" r="8"/>
+                      <path d="M21 21l-4.35-4.35"/>
+                    </svg>
+                  </button>
+                  {#if hiddenMerchants.has(sub.merchant)}
+                    <button class="btn-icon" title="Restore" onclick={() => unhideSubscription(sub.merchant)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                        <circle cx="12" cy="12" r="3"/>
+                      </svg>
+                    </button>
+                  {:else}
+                    <button class="btn-icon" title="Hide (not a subscription)" onclick={() => hideSubscription(sub.merchant)}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/>
+                        <line x1="1" y1="1" x2="23" y2="23"/>
+                      </svg>
+                    </button>
+                  {/if}
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
       </div>
     </div>
-
-    <table>
-      <thead>
-        <tr>
-          <th class="sortable" onclick={() => toggleSort("merchant")}>
-            Merchant {sortBy === "merchant" ? (sortDesc ? "↓" : "↑") : ""}
-          </th>
-          <th>Amount</th>
-          <th>Frequency</th>
-          <th class="sortable" onclick={() => toggleSort("annual_cost")}>
-            Annual Cost {sortBy === "annual_cost" ? (sortDesc ? "↓" : "↑") : ""}
-          </th>
-          <th class="sortable" onclick={() => toggleSort("last_charge")}>
-            Last Charge {sortBy === "last_charge" ? (sortDesc ? "↓" : "↑") : ""}
-          </th>
-          <th>Actions</th>
-        </tr>
-      </thead>
-      <tbody>
-        {#each sortedSubscriptions as sub}
-          <tr class:hidden={hiddenMerchants.has(sub.merchant)}>
-            <td class="merchant">{sub.merchant}</td>
-            <td class="amount">{formatCurrency(sub.amount)}</td>
-            <td class="frequency">
-              <span class="badge">{sub.frequency}</span>
-            </td>
-            <td class="annual-cost">{formatCurrency(sub.annual_cost)}</td>
-            <td class="date">{formatDate(sub.last_charge)}</td>
-            <td class="actions">
-              <button class="btn-icon" title="View transactions" onclick={() => viewTransactions(sub.merchant)}>
-                🔍
-              </button>
-              {#if hiddenMerchants.has(sub.merchant)}
-                <button class="btn-icon" title="Restore" onclick={() => unhideSubscription(sub.merchant)}>
-                  👁
-                </button>
-              {:else}
-                <button class="btn-icon" title="Hide (not a subscription)" onclick={() => hideSubscription(sub.merchant)}>
-                  🙈
-                </button>
-              {/if}
-            </td>
-          </tr>
-        {/each}
-      </tbody>
-    </table>
   {/if}
 </div>
 
 <style>
-  /* Use CSS variables from host app - no dark mode classes needed */
-  .container {
-    padding: var(--spacing-lg, 24px);
-    font-family: system-ui, -apple-system, sans-serif;
-    color: var(--text-primary);
+  /* Base Layout - matches app patterns */
+  .view {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
     background: var(--bg-primary);
-    min-height: 100%;
+    color: var(--text-primary);
+    font-family: var(--font-sans, system-ui, -apple-system, sans-serif);
   }
 
-  header {
+  /* Header */
+  .header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: var(--spacing-lg, 24px);
+    padding: var(--spacing-md, 12px) var(--spacing-lg, 16px);
+    background: var(--bg-secondary);
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  .header-left {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xs, 4px);
   }
 
   .header-right {
     display: flex;
     align-items: center;
-    gap: var(--spacing-md, 16px);
+    gap: var(--spacing-md, 12px);
   }
 
-  h1 {
-    font-size: 20px;
+  .title {
+    font-size: 16px;
     font-weight: 600;
-    margin: 0;
     color: var(--text-primary);
+    margin: 0;
   }
 
   .subtitle {
+    font-size: 12px;
     color: var(--text-muted);
-    margin: 4px 0 0;
-    font-size: 13px;
+    margin: 0;
   }
 
-  .toggle {
+  /* Content */
+  .content {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--spacing-lg, 16px);
+  }
+
+  /* Cards */
+  .cards {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: var(--spacing-md, 12px);
+    margin-bottom: var(--spacing-lg, 16px);
+  }
+
+  .card {
+    background: var(--bg-secondary);
+    border: 1px solid var(--border-primary);
+    border-radius: var(--radius-md, 6px);
+    padding: var(--spacing-md, 12px);
     display: flex;
-    align-items: center;
-    gap: var(--spacing-sm, 8px);
-    font-size: 13px;
-    color: var(--text-secondary);
-    cursor: pointer;
+    flex-direction: column;
+    gap: var(--spacing-xs, 4px);
   }
 
-  .toggle input {
-    accent-color: var(--accent-primary);
+  .card-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    font-weight: 500;
   }
 
+  .card-value {
+    font-size: 24px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+
+  /* Buttons */
   .btn {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    padding: 8px 14px;
-    border-radius: 6px;
-    font-size: 13px;
+    padding: 6px 12px;
+    border-radius: var(--radius-sm, 4px);
+    font-size: 12px;
     font-weight: 500;
     cursor: pointer;
     border: none;
@@ -415,83 +474,89 @@
   }
 
   .btn.secondary:hover {
-    background: var(--bg-secondary);
+    background: var(--bg-primary);
   }
 
-  .loading, .empty {
-    text-align: center;
-    padding: 48px;
-    color: var(--text-muted);
-  }
-
-  .hint {
-    font-size: 13px;
-    margin-top: 8px;
-  }
-
-  .summary-cards {
-    display: grid;
-    grid-template-columns: repeat(3, 1fr);
-    gap: var(--spacing-md, 16px);
-    margin-bottom: var(--spacing-lg, 24px);
-  }
-
-  .summary-card {
-    background: var(--bg-secondary);
-    border: 1px solid var(--border-primary);
-    border-radius: 8px;
-    padding: var(--spacing-md, 16px);
+  .btn-icon {
+    width: 28px;
+    height: 28px;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: var(--radius-sm, 4px);
+    color: var(--text-secondary);
+    cursor: pointer;
     display: flex;
-    flex-direction: column;
-    gap: 4px;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s;
   }
 
-  .summary-card .label {
-    font-size: 11px;
-    color: var(--text-muted);
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    font-weight: 500;
-  }
-
-  .summary-card .value {
-    font-size: 24px;
-    font-weight: 600;
+  .btn-icon:hover {
+    background: var(--bg-tertiary);
     color: var(--text-primary);
   }
 
-  table {
+  /* Checkbox */
+  .checkbox {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-sm, 8px);
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+  }
+
+  .checkbox input {
+    accent-color: var(--accent-primary);
+  }
+
+  /* Table */
+  .table-container {
+    overflow-x: auto;
+  }
+
+  .table {
     width: 100%;
     border-collapse: collapse;
+    font-size: 13px;
   }
 
-  th, td {
-    padding: 12px;
+  .table th {
     text-align: left;
-    border-bottom: 1px solid var(--border-primary);
-  }
-
-  th {
+    padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
     font-size: 11px;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
+    border-bottom: 2px solid var(--border-primary);
+    white-space: nowrap;
   }
 
-  th.sortable {
+  .table th.sortable {
     cursor: pointer;
+    user-select: none;
   }
 
-  th.sortable:hover {
-    color: var(--accent-primary);
+  .table th.sortable:hover {
+    color: var(--text-primary);
   }
 
-  tbody tr:hover {
+  .table th.actions-header {
+    text-align: right;
+  }
+
+  .table td {
+    padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+    border-bottom: 1px solid var(--border-primary);
+  }
+
+  .table tbody tr:hover {
     background: var(--bg-secondary);
   }
 
-  tr.hidden {
+  .table tbody tr.muted {
     opacity: 0.5;
   }
 
@@ -500,21 +565,27 @@
     color: var(--text-primary);
   }
 
-  .amount, .annual-cost {
-    font-family: var(--font-mono, ui-monospace, monospace);
-    font-size: 13px;
+  .mono {
+    font-family: var(--font-mono, monospace);
   }
 
-  .annual-cost {
+  .cost {
     font-weight: 600;
-    color: var(--accent-danger, #ef4444);
+    color: var(--accent-danger, #f85149);
   }
 
   .date {
-    font-size: 13px;
     color: var(--text-muted);
+    font-size: 12px;
   }
 
+  .actions {
+    display: flex;
+    gap: var(--spacing-xs, 4px);
+    justify-content: flex-end;
+  }
+
+  /* Badge */
   .badge {
     display: inline-block;
     padding: 3px 8px;
@@ -522,32 +593,65 @@
     color: var(--accent-primary);
     font-size: 10px;
     font-weight: 600;
-    border-radius: 4px;
+    border-radius: var(--radius-sm, 4px);
     text-transform: uppercase;
     letter-spacing: 0.3px;
   }
 
-  .actions {
+  /* Loading */
+  .loading {
     display: flex;
-    gap: 4px;
-  }
-
-  .btn-icon {
-    width: 28px;
-    height: 28px;
-    padding: 0;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-    border-radius: 4px;
-    font-size: 14px;
-    color: var(--text-secondary);
-    display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    flex: 1;
+    gap: var(--spacing-md, 12px);
+    color: var(--text-muted);
   }
 
-  .btn-icon:hover {
-    background: var(--bg-tertiary);
+  .spinner {
+    width: 24px;
+    height: 24px;
+    border: 2px solid var(--border-primary);
+    border-top-color: var(--accent-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin {
+    to { transform: rotate(360deg); }
+  }
+
+  /* Empty State */
+  .empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    text-align: center;
+    padding: var(--spacing-xl, 24px);
+    color: var(--text-muted);
+  }
+
+  .empty-icon {
+    font-size: 48px;
+    font-weight: 600;
+    color: var(--accent-primary);
+    opacity: 0.3;
+    margin-bottom: var(--spacing-md, 12px);
+  }
+
+  .empty-title {
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin: 0 0 var(--spacing-sm, 8px) 0;
+  }
+
+  .empty-message {
+    font-size: 13px;
+    margin: 0;
+    max-width: 400px;
   }
 </style>
