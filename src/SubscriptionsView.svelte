@@ -15,8 +15,11 @@
     interval_days: number;
     occurrence_count: number;
     annual_cost: number;
+    ytd_cost: number;
     last_charge: string;
     first_charge: string;
+    days_since_last: number;
+    is_stale: boolean;
   }
 
   interface HiddenSubscription {
@@ -53,19 +56,31 @@
     [...visibleSubscriptions].sort((a, b) => b.annual_cost - a.annual_cost)
   );
 
-  let activeCount = $derived(
-    subscriptions.filter(s => !hiddenMerchants.has(s.merchant)).length
+  let activeSubscriptions = $derived(
+    subscriptions.filter(s => !hiddenMerchants.has(s.merchant) && !s.is_stale)
   );
+
+  let staleSubscriptions = $derived(
+    subscriptions.filter(s => !hiddenMerchants.has(s.merchant) && s.is_stale)
+  );
+
+  let activeCount = $derived(activeSubscriptions.length);
+
+  let staleCount = $derived(staleSubscriptions.length);
 
   let hiddenCount = $derived(hiddenMerchants.size);
 
   let totalAnnualCost = $derived(
-    subscriptions
-      .filter(s => !hiddenMerchants.has(s.merchant))
-      .reduce((sum, s) => sum + s.annual_cost, 0)
+    activeSubscriptions.reduce((sum, s) => sum + s.annual_cost, 0)
   );
 
   let totalMonthlyCost = $derived(totalAnnualCost / 12);
+
+  let totalYTDCost = $derived(
+    subscriptions
+      .filter(s => !hiddenMerchants.has(s.merchant))
+      .reduce((sum, s) => sum + s.ytd_cost, 0)
+  );
 
   let selectedSubscription = $derived(sortedSubscriptions[cursorIndex] || null);
 
@@ -114,49 +129,62 @@
     }
   }
 
+  // Store the SQL for "View SQL" feature
+  const SUBSCRIPTION_SQL = `WITH merchant_transactions AS (
+  SELECT
+    description as merchant,
+    amount,
+    transaction_date,
+    LAG(transaction_date) OVER (PARTITION BY description ORDER BY transaction_date) as prev_date
+  FROM transactions
+  WHERE amount < 0
+    AND description IS NOT NULL
+    AND description != ''
+),
+merchant_intervals AS (
+  SELECT
+    merchant,
+    amount,
+    transaction_date,
+    DATEDIFF('day', prev_date, transaction_date) as interval_days
+  FROM merchant_transactions
+  WHERE prev_date IS NOT NULL
+),
+ytd_spending AS (
+  SELECT
+    description as merchant,
+    SUM(ABS(amount)) as ytd_total
+  FROM transactions
+  WHERE amount < 0
+    AND transaction_date >= DATE_TRUNC('year', CURRENT_DATE)
+  GROUP BY description
+),
+merchant_stats AS (
+  SELECT
+    mi.merchant,
+    AVG(ABS(mi.amount)) as avg_amount,
+    COUNT(*) + 1 as occurrence_count,
+    AVG(mi.interval_days) as avg_interval,
+    STDDEV(mi.interval_days) as stddev_interval,
+    MAX(mi.transaction_date) as last_charge,
+    MIN(mi.transaction_date) as first_charge,
+    COALESCE(ys.ytd_total, 0) as ytd_cost,
+    DATEDIFF('day', MAX(mi.transaction_date), CURRENT_DATE) as days_since_last
+  FROM merchant_intervals mi
+  LEFT JOIN ytd_spending ys ON mi.merchant = ys.merchant
+  GROUP BY mi.merchant, ys.ytd_total
+  HAVING
+    COUNT(*) >= 2
+    AND AVG(mi.interval_days) BETWEEN 5 AND 400
+    AND STDDEV(mi.interval_days) < AVG(mi.interval_days) * 0.3
+)
+SELECT * FROM merchant_stats
+ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
+
   async function detectSubscriptions() {
     isLoading = true;
     try {
-      const rows = await sdk.query<any>(`
-        WITH merchant_transactions AS (
-          SELECT
-            description as merchant,
-            amount,
-            transaction_date,
-            LAG(transaction_date) OVER (PARTITION BY description ORDER BY transaction_date) as prev_date
-          FROM transactions
-          WHERE amount < 0
-            AND description IS NOT NULL
-            AND description != ''
-        ),
-        merchant_intervals AS (
-          SELECT
-            merchant,
-            amount,
-            transaction_date,
-            DATEDIFF('day', prev_date, transaction_date) as interval_days
-          FROM merchant_transactions
-          WHERE prev_date IS NOT NULL
-        ),
-        merchant_stats AS (
-          SELECT
-            merchant,
-            AVG(ABS(amount)) as avg_amount,
-            COUNT(*) + 1 as occurrence_count,
-            AVG(interval_days) as avg_interval,
-            STDDEV(interval_days) as stddev_interval,
-            MAX(transaction_date) as last_charge,
-            MIN(transaction_date) as first_charge
-          FROM merchant_intervals
-          GROUP BY merchant
-          HAVING
-            COUNT(*) >= 2
-            AND AVG(interval_days) BETWEEN 5 AND 400
-            AND STDDEV(interval_days) < AVG(interval_days) * 0.3
-        )
-        SELECT * FROM merchant_stats
-        ORDER BY avg_amount * (365.0 / avg_interval) DESC
-      `);
+      const rows = await sdk.query<any>(SUBSCRIPTION_SQL);
 
       subscriptions = rows.map((row: any) => {
         const merchant = row[0] as string;
@@ -165,6 +193,8 @@
         const avg_interval = row[3] as number;
         const last_charge = row[5] as string;
         const first_charge = row[6] as string;
+        const ytd_cost = row[7] as number;
+        const days_since_last = row[8] as number;
 
         const intervalDays = Math.round(avg_interval);
         let frequency = "unknown";
@@ -176,6 +206,10 @@
         else if (intervalDays <= 200) frequency = "semi-annual";
         else frequency = "annual";
 
+        // Consider stale if no charge in 2x the expected interval (or 90 days min)
+        const staleThreshold = Math.max(intervalDays * 2, 90);
+        const is_stale = days_since_last > staleThreshold;
+
         return {
           merchant,
           amount: Math.round(avg_amount * 100) / 100,
@@ -183,8 +217,11 @@
           interval_days: intervalDays,
           occurrence_count,
           annual_cost: Math.round(avg_amount * (365 / intervalDays) * 100) / 100,
+          ytd_cost: Math.round(ytd_cost * 100) / 100,
           last_charge,
           first_charge,
+          days_since_last,
+          is_stale,
         };
       });
     } catch (e) {
@@ -226,6 +263,12 @@
   function viewTransactions(merchant: string) {
     sdk.openView("transactions", {
       initialFilter: `description = '${merchant.replace(/'/g, "''")}'`
+    });
+  }
+
+  function viewSQL() {
+    sdk.openView("query", {
+      initialQuery: SUBSCRIPTION_SQL
     });
   }
 
@@ -322,6 +365,9 @@
       <h1 class="title">Subscriptions</h1>
       {#if !isLoading}
         <span class="count-badge">{activeCount} active</span>
+        {#if staleCount > 0}
+          <span class="stale-badge">{staleCount} inactive</span>
+        {/if}
         {#if hiddenCount > 0}
           <span class="hidden-badge">{hiddenCount} hidden</span>
         {/if}
@@ -331,6 +377,32 @@
         Refresh
       </button>
     </div>
+
+    {#if !isLoading && subscriptions.length > 0}
+      <div class="hero-cards">
+        <div class="hero-card">
+          <span class="hero-label">Est. Monthly</span>
+          <span class="hero-value">{formatCurrency(totalMonthlyCost)}</span>
+        </div>
+        <div class="hero-card">
+          <span class="hero-label">Est. Annual</span>
+          <span class="hero-value">{formatCurrency(totalAnnualCost)}</span>
+        </div>
+        <div class="hero-card">
+          <span class="hero-label">YTD Actual</span>
+          <span class="hero-value">{formatCurrency(totalYTDCost)}</span>
+        </div>
+        <button class="sql-link" onclick={viewSQL}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+            <polyline points="14 2 14 8 20 8"/>
+            <line x1="16" y1="13" x2="8" y2="13"/>
+            <line x1="16" y1="17" x2="8" y2="17"/>
+          </svg>
+          View SQL
+        </button>
+      </div>
+    {/if}
   </header>
 
   <!-- Filter Bar -->
@@ -396,19 +468,24 @@
                 <th class="col-merchant">Merchant</th>
                 <th class="col-amount">Amount</th>
                 <th class="col-frequency">Frequency</th>
-                <th class="col-annual">Annual</th>
+                <th class="col-annual">Est. Annual</th>
               </tr>
             </thead>
             <tbody>
               {#each sortedSubscriptions as sub, i}
+                {@const isHidden = hiddenMerchants.has(sub.merchant)}
                 <tr
                   class:selected={i === cursorIndex}
-                  class:hidden={hiddenMerchants.has(sub.merchant)}
+                  class:hidden={isHidden}
+                  class:stale={sub.is_stale && !isHidden}
                   onclick={() => cursorIndex = i}
                   ondblclick={() => viewTransactions(sub.merchant)}
                 >
                   <td class="col-merchant">
                     <span class="merchant-name">{sub.merchant}</span>
+                    {#if sub.is_stale && !isHidden}
+                      <span class="stale-indicator" title="No charge in {sub.days_since_last} days">Inactive?</span>
+                    {/if}
                   </td>
                   <td class="col-amount">{formatCurrency(sub.amount)}</td>
                   <td class="col-frequency">
@@ -446,8 +523,12 @@
                 <span class="detail-value">{formatFrequency(sub.frequency)}</span>
               </div>
               <div class="detail-row">
-                <span class="detail-label">Annual Cost</span>
+                <span class="detail-label">Est. Annual</span>
                 <span class="detail-value cost">{formatCurrency(sub.annual_cost)}</span>
+              </div>
+              <div class="detail-row">
+                <span class="detail-label">YTD Actual</span>
+                <span class="detail-value">{formatCurrency(sub.ytd_cost)}</span>
               </div>
               <div class="detail-row">
                 <span class="detail-label">Last Charge</span>
@@ -461,6 +542,12 @@
                 <span class="detail-label">Occurrences</span>
                 <span class="detail-value">{sub.occurrence_count}</span>
               </div>
+              {#if sub.is_stale}
+                <div class="stale-warning">
+                  <span class="warning-icon">⚠️</span>
+                  <span>No charge in {sub.days_since_last} days - may be cancelled</span>
+                </div>
+              {/if}
             </div>
 
             <div class="sidebar-section sidebar-actions">
@@ -555,6 +642,69 @@
     padding: 2px 8px;
     background: var(--bg-tertiary);
     border-radius: 10px;
+  }
+
+  .stale-badge {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--accent-warning, #f0a020);
+    padding: 2px 8px;
+    background: rgba(240, 160, 32, 0.15);
+    border-radius: 10px;
+  }
+
+  /* Hero Cards */
+  .hero-cards {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-md, 12px);
+    margin-top: var(--spacing-md, 12px);
+  }
+
+  .hero-card {
+    background: var(--bg-tertiary);
+    border: 1px solid var(--border-primary);
+    border-radius: 8px;
+    padding: var(--spacing-sm, 8px) var(--spacing-md, 12px);
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .hero-label {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+
+  .hero-value {
+    font-size: 18px;
+    font-weight: 600;
+    color: var(--text-primary);
+    font-family: var(--font-mono, monospace);
+  }
+
+  .sql-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-left: auto;
+    padding: 6px 10px;
+    background: transparent;
+    border: 1px solid var(--border-primary);
+    border-radius: 4px;
+    color: var(--text-muted);
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .sql-link:hover {
+    background: var(--bg-tertiary);
+    color: var(--accent-primary);
+    border-color: var(--accent-primary);
   }
 
   .header-spacer {
@@ -800,23 +950,61 @@
     opacity: 0.5;
   }
 
+  .table tbody tr.stale {
+    opacity: 0.7;
+  }
+
+  .table tbody tr.stale .merchant-name {
+    color: var(--text-secondary);
+  }
+
+  /* Column widths for alignment */
   .col-merchant {
+    width: 45%;
     min-width: 200px;
   }
 
-  .col-amount, .col-annual {
-    font-family: var(--font-mono, monospace);
-    text-align: right;
-    white-space: nowrap;
+  .col-amount {
+    width: 15%;
+    min-width: 100px;
   }
 
   .col-frequency {
+    width: 15%;
+    min-width: 100px;
+  }
+
+  .col-annual {
+    width: 15%;
+    min-width: 100px;
+  }
+
+  th.col-amount, th.col-annual,
+  td.col-amount, td.col-annual {
+    text-align: right;
+    font-family: var(--font-mono, monospace);
+    white-space: nowrap;
+  }
+
+  td.col-frequency {
     white-space: nowrap;
   }
 
   .merchant-name {
     font-weight: 500;
     color: var(--text-primary);
+  }
+
+  .stale-indicator {
+    display: inline-block;
+    margin-left: 8px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--accent-warning, #f0a020);
+    background: rgba(240, 160, 32, 0.15);
+    padding: 2px 6px;
+    border-radius: 4px;
+    vertical-align: middle;
   }
 
   .frequency-badge {
@@ -900,6 +1088,24 @@
   .detail-value.cost {
     color: var(--accent-danger, #f85149);
     font-weight: 600;
+  }
+
+  .stale-warning {
+    display: flex;
+    align-items: flex-start;
+    gap: 6px;
+    margin-top: var(--spacing-sm, 8px);
+    padding: var(--spacing-sm, 8px);
+    background: rgba(240, 160, 32, 0.1);
+    border: 1px solid rgba(240, 160, 32, 0.3);
+    border-radius: 4px;
+    font-size: 11px;
+    color: var(--accent-warning, #f0a020);
+    line-height: 1.4;
+  }
+
+  .stale-warning .warning-icon {
+    flex-shrink: 0;
   }
 
   .sidebar-actions {
