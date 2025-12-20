@@ -1,4 +1,4 @@
-import type { Plugin, PluginContext } from "./types";
+import type { Plugin, PluginContext, PluginSDK } from "@treeline-money/plugin-sdk";
 import SubscriptionsView from "./SubscriptionsView.svelte";
 import { mount, unmount } from "svelte";
 
@@ -22,7 +22,7 @@ export const plugin: Plugin = {
       id: "subscriptions",
       name: "Subscriptions",
       icon: "repeat",
-      mount: (target: HTMLElement, props: Record<string, any>) => {
+      mount: (target: HTMLElement, props: { sdk: PluginSDK }) => {
         const instance = mount(SubscriptionsView, {
           target,
           props,
