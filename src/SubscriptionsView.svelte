@@ -447,9 +447,9 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
     try {
       await sdk.execute(`
         INSERT INTO sys_plugin_subscriptions (merchant_key, hidden_at)
-        VALUES ('${sub.merchant_key.replace(/'/g, "''")}', NOW())
+        VALUES (?, NOW())
         ON CONFLICT (merchant_key) DO UPDATE SET hidden_at = NOW()
-      `);
+      `, [sub.merchant_key]);
       hiddenMerchantKeys = new Set([...hiddenMerchantKeys, sub.merchant_key]);
       sdk.toast.info("Hidden", `"${sub.merchant}" marked as not a subscription`);
     } catch (e) {
@@ -460,8 +460,8 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
   async function unhideSubscription(sub: Subscription) {
     try {
       await sdk.execute(`
-        DELETE FROM sys_plugin_subscriptions WHERE merchant_key = '${sub.merchant_key.replace(/'/g, "''")}'
-      `);
+        DELETE FROM sys_plugin_subscriptions WHERE merchant_key = ?
+      `, [sub.merchant_key]);
       const newHidden = new Set(hiddenMerchantKeys);
       newHidden.delete(sub.merchant_key);
       hiddenMerchantKeys = newHidden;
@@ -474,14 +474,13 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
   async function loadRecentTransactions(merchant: string) {
     isLoadingTransactions = true;
     try {
-      const escapedMerchant = merchant.replace(/'/g, "''");
       const rows = await sdk.query<any>(`
         SELECT transaction_date, amount
         FROM transactions
-        WHERE description = '${escapedMerchant}'
+        WHERE description = ?
         ORDER BY transaction_date DESC
         LIMIT 15
-      `);
+      `, [merchant]);
       recentTransactions = rows.map((row: any) => ({
         date: row[0] as string,
         amount: row[1] as number,
