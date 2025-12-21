@@ -9,7 +9,7 @@ A Treeline plugin that detects recurring charges and helps track subscription co
 | `manifest.json` | Plugin metadata (id: "subscriptions") |
 | `src/index.ts` | Plugin entry point |
 | `src/SubscriptionsView.svelte` | Main UI component |
-| `src/types.ts` | TypeScript types for the Plugin SDK |
+| `package.json` | Dependencies (includes `@treeline-money/plugin-sdk`) |
 
 ## Quick Commands
 
@@ -46,24 +46,40 @@ The plugin analyzes transaction history to find recurring patterns:
 3. Calculates average amount and frequency
 4. Presents detected subscriptions for user review
 
-## SDK Quick Reference
+## SDK Import
+
+All types are imported from the npm package:
+
+```typescript
+import type { Plugin, PluginContext, PluginSDK } from "@treeline-money/plugin-sdk";
+```
 
 Views receive `sdk` via props:
 
 ```svelte
 <script lang="ts">
-  import type { PluginSDK } from "./types";
-  let { sdk }: { sdk: PluginSDK } = $props();
+  import type { PluginSDK } from "@treeline-money/plugin-sdk";
+
+  interface Props {
+    sdk: PluginSDK;
+  }
+  let { sdk }: Props = $props();
 </script>
 ```
+
+## SDK Quick Reference
 
 | Method | What it does |
 |--------|--------------|
 | `sdk.query(sql)` | Read transactions for analysis |
 | `sdk.execute(sql)` | Write to sys_plugin_subscriptions |
-| `sdk.toast.success/error(msg)` | Show notifications |
+| `sdk.toast.success/error/info(msg)` | Show notifications |
+| `sdk.openView(viewId, props?)` | Navigate to another view |
+| `sdk.onDataRefresh(callback)` | React when data changes |
+| `sdk.emitDataRefresh()` | Notify other views data changed |
 | `sdk.theme.current()` | Get "light" or "dark" |
 | `sdk.settings.get/set()` | Persist settings |
+| `sdk.currency.format(amount)` | Format as currency |
 
 ## Releasing
 
@@ -73,4 +89,4 @@ Views receive `sdk` via props:
 
 ## Full Documentation
 
-See https://github.com/zack-schrag/treeline-money/blob/main/docs/plugins.md
+See https://github.com/treeline-money/treeline
