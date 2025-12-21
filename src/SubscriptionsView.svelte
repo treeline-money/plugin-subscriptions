@@ -309,7 +309,6 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
       let manualSubs: Subscription[] = [];
       const tagToUse = typeof subscriptionTag === "string" ? subscriptionTag.trim() : "";
       if (tagToUse) {
-        const escapedTag = tagToUse.replace(/'/g, "''");
         const taggedRows = await sdk.query<any>(`
           WITH tagged_transactions AS (
             SELECT
@@ -320,7 +319,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
               LAG(transaction_date) OVER (PARTITION BY UPPER(description) ORDER BY transaction_date) as prev_date
             FROM transactions
             WHERE amount < 0
-              AND list_contains(tags, '${escapedTag}')
+              AND list_contains(tags, ?)
           ),
           with_intervals AS (
             SELECT *,
@@ -347,7 +346,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
               SUM(ABS(amount)) as ytd_total
             FROM transactions
             WHERE amount < 0
-              AND list_contains(tags, '${escapedTag}')
+              AND list_contains(tags, ?)
               AND transaction_date >= DATE_TRUNC('year', CURRENT_DATE)
             GROUP BY UPPER(description)
           )
@@ -364,7 +363,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
           FROM grouped g
           LEFT JOIN ytd y ON g.merchant_key = y.merchant_key
           ORDER BY g.avg_amount DESC
-        `);
+        `, [tagToUse, tagToUse]);
 
         manualSubs = taggedRows.map((row: any) => {
           const merchant = row[0] as string || "";
