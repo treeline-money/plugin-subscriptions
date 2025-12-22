@@ -1,6 +1,6 @@
 # Subscriptions
 
-A [Treeline](https://github.com/zack-schrag/treeline-money) plugin that detects recurring charges and tracks subscription costs.
+A [Treeline](https://github.com/treeline-money/treeline) plugin that detects recurring charges and tracks subscription costs.
 
 ## Features
 
@@ -31,15 +31,15 @@ A [Treeline](https://github.com/zack-schrag/treeline-money) plugin that detects 
 ### Manual Installation
 
 ```bash
-tl plugin install https://github.com/zack-schrag/treeline-subscriptions
+tl plugin install https://github.com/treeline-money/plugin-subscriptions
 # Restart Treeline
 ```
 
 ## Development
 
 ```bash
-git clone https://github.com/zack-schrag/treeline-subscriptions
-cd treeline-subscriptions
+git clone https://github.com/treeline-money/plugin-subscriptions
+cd plugin-subscriptions
 npm install
 npm run build
 tl plugin install .
