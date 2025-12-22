@@ -22,29 +22,28 @@ tl plugin install .  # Install locally for testing
 
 ## Plugin Data
 
-This plugin stores detected subscriptions in `sys_plugin_subscriptions` table:
+This plugin uses a minimal table to track hidden subscriptions. All subscription data is derived on-the-fly from transaction queries:
 
 ```sql
 CREATE TABLE IF NOT EXISTS sys_plugin_subscriptions (
-  id VARCHAR PRIMARY KEY,
-  name VARCHAR NOT NULL,
-  amount DECIMAL NOT NULL,
-  frequency VARCHAR,           -- monthly, yearly, etc.
-  last_charge_date DATE,
-  next_charge_date DATE,
-  category VARCHAR,
-  is_hidden BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  merchant_key VARCHAR PRIMARY KEY,   -- unique key for the subscription
+  hidden_at TIMESTAMP                 -- when it was hidden (null = visible)
 )
 ```
+
+Note: The plugin does NOT store subscription details (name, amount, frequency). Instead, it:
+- Queries transactions with fuzzy matching (Jaro-Winkler similarity)
+- Calculates subscription patterns dynamically
+- Only persists which subscriptions the user has hidden
 
 ## How Detection Works
 
 The plugin analyzes transaction history to find recurring patterns:
-1. Groups transactions by similar descriptions (fuzzy matching)
+1. Groups transactions by similar descriptions (fuzzy matching with Jaro-Winkler)
 2. Identifies regular intervals (monthly, yearly)
 3. Calculates average amount and frequency
-4. Presents detected subscriptions for user review
+4. Requires 3+ occurrences to detect a pattern
+5. Presents detected subscriptions for user review
 
 ## SDK Import
 
