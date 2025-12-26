@@ -1,6 +1,7 @@
 Automatically finds recurring charges in your transaction history and shows you exactly what you're spending on subscriptions.
 
-![Subscriptions view](./docs/screenshot.png)
+<!-- TODO: Add screenshot -->
+
 
 ## How it works
 
