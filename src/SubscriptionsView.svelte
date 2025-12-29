@@ -735,7 +735,7 @@ ORDER BY transaction_date DESC`
                   <td class="col-merchant">
                     <span class="merchant-name">{sub.merchant}</span>
                     {#if sub.is_manual}
-                      <span class="manual-indicator" title="Manually tagged with '{subscriptionTag}'">Tagged</span>
+                      <span class="manual-indicator" title="Added via '{subscriptionTag}' tag">Manual</span>
                     {/if}
                     {#if sub.is_stale && !isHidden}
                       <span class="stale-indicator" title="No charge in {sub.days_since_last} days">Inactive?</span>
@@ -1599,10 +1599,6 @@ ORDER BY transaction_date DESC`
     font-weight: 600;
     text-transform: uppercase;
     opacity: 0.8;
-  }
-
-  .table tbody tr.manual {
-    background: rgba(59, 130, 246, 0.05);
   }
 
   /* Settings Modal */
