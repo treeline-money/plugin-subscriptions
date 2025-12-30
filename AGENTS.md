@@ -25,7 +25,7 @@ tl plugin install .  # Install locally for testing
 This plugin uses a minimal table to track hidden subscriptions. All subscription data is derived on-the-fly from transaction queries:
 
 ```sql
-CREATE TABLE IF NOT EXISTS sys_plugin_subscriptions (
+CREATE TABLE IF NOT EXISTS plugin_subscriptions.subscriptions (
   merchant_key VARCHAR PRIMARY KEY,   -- unique key for the subscription
   hidden_at TIMESTAMP                 -- when it was hidden (null = visible)
 )
@@ -71,7 +71,7 @@ Views receive `sdk` via props:
 | Method | What it does |
 |--------|--------------|
 | `sdk.query(sql)` | Read transactions for analysis |
-| `sdk.execute(sql)` | Write to sys_plugin_subscriptions |
+| `sdk.execute(sql)` | Write to plugin_subscriptions.subscriptions |
 | `sdk.toast.success/error/info(msg)` | Show notifications |
 | `sdk.openView(viewId, props?)` | Navigate to another view |
 | `sdk.onDataRefresh(callback)` | React when data changes |

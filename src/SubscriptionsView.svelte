@@ -120,7 +120,7 @@
     try {
       // Create table with merchant_key as primary key
       await sdk.execute(`
-        CREATE TABLE IF NOT EXISTS sys_plugin_subscriptions (
+        CREATE TABLE IF NOT EXISTS plugin_subscriptions.subscriptions (
           merchant_key VARCHAR PRIMARY KEY,
           hidden_at TIMESTAMP
         )
@@ -156,7 +156,7 @@
   async function loadHiddenMerchants() {
     try {
       const rows = await sdk.query<any>(
-        "SELECT merchant_key FROM sys_plugin_subscriptions WHERE hidden_at IS NOT NULL"
+        "SELECT merchant_key FROM plugin_subscriptions.subscriptions WHERE hidden_at IS NOT NULL"
       );
       // Query returns arrays, not objects - access by index
       hiddenMerchantKeys = new Set(rows.map(r => r[0] as string).filter(Boolean));
@@ -445,7 +445,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
   async function hideSubscription(sub: Subscription) {
     try {
       await sdk.execute(`
-        INSERT INTO sys_plugin_subscriptions (merchant_key, hidden_at)
+        INSERT INTO plugin_subscriptions.subscriptions (merchant_key, hidden_at)
         VALUES (?, NOW())
         ON CONFLICT (merchant_key) DO UPDATE SET hidden_at = NOW()
       `, [sub.merchant_key]);
@@ -459,7 +459,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
   async function unhideSubscription(sub: Subscription) {
     try {
       await sdk.execute(`
-        DELETE FROM sys_plugin_subscriptions WHERE merchant_key = ?
+        DELETE FROM plugin_subscriptions.subscriptions WHERE merchant_key = ?
       `, [sub.merchant_key]);
       const newHidden = new Set(hiddenMerchantKeys);
       newHidden.delete(sub.merchant_key);

@@ -10,10 +10,8 @@ export const plugin: Plugin = {
     description: "Detect recurring charges and track subscription costs",
     author: "Treeline",
     permissions: {
-      tables: {
-        read: ["transactions", "sys_plugin_subscriptions"],
-        create: ["sys_plugin_subscriptions"],
-      },
+      read: ["transactions"],
+      schemaName: "plugin_subscriptions",
     },
   },
 
