@@ -1,6 +1,20 @@
-import type { Plugin, PluginContext, PluginSDK } from "@treeline-money/plugin-sdk";
+import type { Plugin, PluginContext, PluginSDK, PluginMigration } from "@treeline-money/plugin-sdk";
 import SubscriptionsView from "./SubscriptionsView.svelte";
 import { mount, unmount } from "svelte";
+
+// Database migrations - run in order by version when plugin loads
+const migrations: PluginMigration[] = [
+  {
+    version: 1,
+    name: "create_subscriptions_table",
+    up: `
+      CREATE TABLE IF NOT EXISTS plugin_subscriptions.subscriptions (
+        merchant_key VARCHAR PRIMARY KEY,
+        hidden_at TIMESTAMP
+      )
+    `,
+  },
+];
 
 export const plugin: Plugin = {
   manifest: {
@@ -14,6 +28,8 @@ export const plugin: Plugin = {
       schemaName: "plugin_subscriptions",
     },
   },
+
+  migrations,
 
   activate(context: PluginContext) {
     // Register the subscriptions view

@@ -102,7 +102,7 @@
       detectSubscriptions();
     });
 
-    await ensureTable();
+    // Tables are created by migrations in index.ts - just load data
     await loadSettings();
     await loadHiddenMerchants();
     await detectSubscriptions();
@@ -114,24 +114,6 @@
   onDestroy(() => {
     if (unsubscribe) unsubscribe();
   });
-
-  // Database
-  async function ensureTable() {
-    try {
-      // Create schema first
-      await sdk.execute(`CREATE SCHEMA IF NOT EXISTS plugin_subscriptions`);
-
-      // Create table with merchant_key as primary key
-      await sdk.execute(`
-        CREATE TABLE IF NOT EXISTS plugin_subscriptions.subscriptions (
-          merchant_key VARCHAR PRIMARY KEY,
-          hidden_at TIMESTAMP
-        )
-      `);
-    } catch (e) {
-      // Table might already exist
-    }
-  }
 
   async function loadSettings() {
     try {
