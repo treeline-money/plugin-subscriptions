@@ -118,6 +118,9 @@
   // Database
   async function ensureTable() {
     try {
+      // Create schema first
+      await sdk.execute(`CREATE SCHEMA IF NOT EXISTS plugin_subscriptions`);
+
       // Create table with merchant_key as primary key
       await sdk.execute(`
         CREATE TABLE IF NOT EXISTS plugin_subscriptions.subscriptions (
