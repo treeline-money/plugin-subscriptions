@@ -150,9 +150,20 @@
     }
   }
 
+  // Get current date for SQL queries (avoids ICU extension dependency)
+  function getCurrentDate(): string {
+    return new Date().toISOString().split('T')[0];
+  }
+
+  function getYearStart(): string {
+    const now = new Date();
+    return `${now.getFullYear()}-01-01`;
+  }
+
   // Store the SQL for "View SQL" feature
   // Groups by amount + fuzzy description matching to handle merchant name variations
   // (e.g., "Netflix.com Los Gatos CA" vs "NETFLIX.COM NETFLIX.COM CA")
+  // Note: Uses parameter placeholders for dates to avoid ICU extension dependency
   const SUBSCRIPTION_SQL = `WITH base_transactions AS (
   SELECT
     ROUND(amount, 2) as norm_amount,
@@ -216,7 +227,7 @@ ytd_spending AS (
     gt.norm_amount,
     SUM(ABS(gt.amount)) as ytd_total
   FROM grouped_transactions gt
-  WHERE gt.transaction_date >= DATE_TRUNC('year', CURRENT_DATE)
+  WHERE gt.transaction_date >= ?::DATE
   GROUP BY gt.merchant_group, gt.norm_amount
 ),
 merchant_stats AS (
@@ -230,7 +241,7 @@ merchant_stats AS (
     MAX(mi.transaction_date) as last_charge,
     MIN(mi.transaction_date) as first_charge,
     COALESCE(MAX(ys.ytd_total), 0) as ytd_cost,
-    DATEDIFF('day', MAX(mi.transaction_date), CURRENT_DATE) as days_since_last
+    DATEDIFF('day', MAX(mi.transaction_date), ?::DATE) as days_since_last
   FROM merchant_intervals mi
   LEFT JOIN ytd_spending ys ON mi.merchant_group = ys.merchant_group AND mi.norm_amount = ys.norm_amount
   GROUP BY mi.merchant_group, mi.norm_amount
@@ -246,7 +257,10 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
     isLoading = true;
     try {
       // Auto-detected subscriptions
-      const rows = await sdk.query<any>(SUBSCRIPTION_SQL);
+      // Pass current date as parameters to avoid ICU extension dependency
+      const today = getCurrentDate();
+      const yearStart = getYearStart();
+      const rows = await sdk.query<any>(SUBSCRIPTION_SQL, [yearStart, today]);
 
       const autoDetected: Subscription[] = rows.map((row: any) => {
         const merchant = row[0] as string || "";
@@ -321,7 +335,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
               AVG(interval_days) as avg_interval,
               MAX(transaction_date) as last_charge,
               MIN(transaction_date) as first_charge,
-              DATEDIFF('day', MAX(transaction_date), CURRENT_DATE) as days_since_last
+              DATEDIFF('day', MAX(transaction_date), ?::DATE) as days_since_last
             FROM with_intervals
             GROUP BY merchant_key
           ),
@@ -332,7 +346,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
             FROM transactions
             WHERE amount < 0
               AND list_contains(tags, ?)
-              AND transaction_date >= DATE_TRUNC('year', CURRENT_DATE)
+              AND transaction_date >= ?::DATE
             GROUP BY UPPER(description)
           )
           SELECT
@@ -348,7 +362,7 @@ ORDER BY avg_amount * (365.0 / avg_interval) DESC`;
           FROM grouped g
           LEFT JOIN ytd y ON g.merchant_key = y.merchant_key
           ORDER BY g.avg_amount DESC
-        `, [tagToUse, tagToUse]);
+        `, [tagToUse, today, tagToUse, yearStart]);
 
         manualSubs = taggedRows.map((row: any) => {
           const merchant = row[0] as string || "";
