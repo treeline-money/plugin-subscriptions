@@ -841,18 +841,6 @@ ORDER BY transaction_date DESC`
               <p>Select a subscription to see details</p>
             </div>
           {/if}
-
-          <div class="sidebar-section summary">
-            <h3 class="sidebar-title">Summary</h3>
-            <div class="summary-row">
-              <span class="summary-label">Monthly</span>
-              <span class="summary-value">{formatCurrency(totalMonthlyCost)}</span>
-            </div>
-            <div class="summary-row">
-              <span class="summary-label">Annual</span>
-              <span class="summary-value">{formatCurrency(totalAnnualCost)}</span>
-            </div>
-          </div>
         </aside>
       </div>
     {/if}
@@ -1513,30 +1501,6 @@ ORDER BY transaction_date DESC`
     text-align: center;
     color: var(--text-muted);
     font-size: 12px;
-  }
-
-  .summary {
-    margin-top: auto;
-    background: var(--bg-tertiary);
-  }
-
-  .summary-row {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 4px 0;
-  }
-
-  .summary-label {
-    font-size: 12px;
-    color: var(--text-secondary);
-  }
-
-  .summary-value {
-    font-size: 16px;
-    font-weight: 600;
-    color: var(--text-primary);
-    font-family: var(--font-mono, monospace);
   }
 
   /* Keyboard Hints */

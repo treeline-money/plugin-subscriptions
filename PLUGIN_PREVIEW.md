@@ -1,6 +1,7 @@
 Automatically finds recurring charges in your transaction history and shows you exactly what you're spending on subscriptions.
 
-<!-- TODO: Add screenshot -->
+![Subscriptions plugin showing detected recurring charges](./screenshots/subscriptions-light.png)
+![Subscriptions plugin showing detected recurring charges](./screenshots/subscriptions-dark.png)
 
 
 ## How it works
